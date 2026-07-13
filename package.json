@@ -5,6 +5,10 @@
   "type": "module",
   "license": "Apache-2.0",
   "author": "George Moon <george.moon@gmail.com>",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/forkzero/s3-website-test-kit.git"
