@@ -1,0 +1,58 @@
+{
+  "name": "@forkzero/s3-website-test-kit",
+  "version": "0.1.0",
+  "description": "Target-agnostic Artillery load and conformance tests for S3 static-website semantics. Run the same suite against native S3 website hosting or s3proxy and compare.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "George Moon <george.moon@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/forkzero/s3-website-test-kit.git"
+  },
+  "homepage": "https://github.com/forkzero/s3-website-test-kit#readme",
+  "bugs": {
+    "url": "https://github.com/forkzero/s3-website-test-kit/issues"
+  },
+  "keywords": [
+    "s3",
+    "s3-website",
+    "s3proxy",
+    "artillery",
+    "load-testing",
+    "conformance",
+    "performance"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./configs/*": "./configs/*",
+    "./scenarios/*": "./scenarios/*",
+    "./utils/*": "./utils/*",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "s3-website-perf-compare": "./utils/results-parser.js"
+  },
+  "scripts": {
+    "validate": "node scripts/validate.mjs"
+  },
+  "files": [
+    "index.js",
+    "configs",
+    "scenarios",
+    "utils",
+    "test-data",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "artillery": "^2.0.33"
+  },
+  "peerDependenciesMeta": {
+    "artillery": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

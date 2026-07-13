@@ -1,0 +1,48 @@
+// Dependency-free validator: run in CI to catch broken assets before publish.
+// Checks that the path helpers resolve, every YAML is non-empty and structurally
+// sane, and that no s3proxy-only endpoint leaked into the target-agnostic core.
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { paths, config, scenario } from '../index.js';
+
+let failed = false;
+const fail = (m) => {
+  console.error('✗', m);
+  failed = true;
+};
+const ok = (m) => console.log('✓', m);
+
+const walk = (dir) =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]
+  );
+
+// 1. Path helpers resolve to real files.
+for (const s of ['core/load-test.yml', 'core/basic-load.yml', 's3proxy/health.yml']) {
+  existsSync(scenario(s)) ? ok(`scenario resolves: ${s}`) : fail(`scenario missing: ${s}`);
+}
+existsSync(config('load-test.yml'))
+  ? ok('config resolves: load-test.yml')
+  : fail('config missing: load-test.yml');
+
+// 2. Every .yml under scenarios/ and configs/ is non-empty and has its top key.
+for (const f of [...walk(paths.scenarios), ...walk(paths.configs)].filter((f) => f.endsWith('.yml'))) {
+  const txt = readFileSync(f, 'utf8').trim();
+  const key = f.includes('/scenarios/') ? 'scenarios:' : 'config:';
+  const label = f.split('/').slice(-2).join('/');
+  if (!txt) fail(`empty yaml: ${label}`);
+  else if (!txt.includes(key)) fail(`${label} missing '${key}'`);
+  else ok(`yaml ok: ${label}`);
+}
+
+// 3. Core scenarios must stay target-agnostic (no /health).
+let coreClean = true;
+for (const f of walk(join(paths.scenarios, 'core')).filter((f) => f.endsWith('.yml'))) {
+  if (readFileSync(f, 'utf8').includes('/health')) {
+    fail(`/health leaked into core: ${f.split('/').slice(-2).join('/')}`);
+    coreClean = false;
+  }
+}
+if (coreClean) ok('core scenarios free of s3proxy-only endpoints');
+
+process.exit(failed ? 1 : 0);

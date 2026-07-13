@@ -1,0 +1,10 @@
+# s3proxy-specific: the /health endpoint is served by s3proxy, not by native
+# S3 website hosting (which would return 404 for it). Run this only against an
+# s3proxy target, and keep it out of the core (target-agnostic) suite.
+scenarios:
+  - name: "Health check"
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200

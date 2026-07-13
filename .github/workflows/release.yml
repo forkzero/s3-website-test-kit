@@ -1,0 +1,38 @@
+name: Release
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+# npm trusted publishing (OIDC): no stored NPM_TOKEN. Requires a Trusted
+# Publisher configured for @forkzero/s3-website-test-kit on npmjs.com
+# (repo forkzero/s3-website-test-kit, workflow release.yml). id-token: write
+# lets the runner request the OIDC token.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - run: npm ci
+      - run: npm run validate
+      - run: npm pack --dry-run
+
+      # OIDC trusted publishing needs npm >= 11.5.1.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Publish to npm
+        # Scoped package -> --access public makes it publicly installable.
+        # Auth is the OIDC exchange; provenance is attached automatically.
+        run: npm publish --access public

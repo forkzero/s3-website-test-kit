@@ -1,0 +1,6 @@
+node_modules/
+*.tgz
+test-results-*.json
+performance-comparison-*.json
+artillery-report-*.json
+.DS_Store

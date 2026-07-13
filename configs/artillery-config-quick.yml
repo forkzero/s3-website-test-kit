@@ -1,0 +1,8 @@
+config:
+  ensure:
+    maxErrorRate: 1
+  plugins:
+    expect: {}
+  phases:
+    - duration: 5
+      arrivalRate: 4
