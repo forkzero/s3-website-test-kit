@@ -1,6 +1,6 @@
 {
   "name": "@forkzero/s3-website-test-kit",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Target-agnostic Artillery load and conformance tests for S3 static-website semantics. Run the same suite against native S3 website hosting or s3proxy and compare.",
   "type": "module",
   "license": "Apache-2.0",
