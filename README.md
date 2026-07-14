@@ -99,13 +99,18 @@ test-data/         Script to create the required objects in your S3 test bucket
 
 ### Comparing two runs
 
-`test-runner.js` writes a JSON summary per run; `results-parser.js` diffs two of
-them, for example native S3 vs s3proxy:
+A run using a config with the `test-runner.js` processor writes a JSON summary
+named `load-test-results-<TEST_ENVIRONMENT>-<ts>.json`. `s3-website-perf-compare`
+diffs two of them — a **baseline** and a **candidate** — labelling each by its
+`TEST_ENVIRONMENT`. For example, native S3 vs s3proxy:
 
 ```bash
-npx s3-website-perf-compare compare \
-  --docker-results test-results-native-s3-<ts>.json \
-  --npm-results test-results-s3proxy-<ts>.json
+# each argument is a results file or a bare TEST_ENVIRONMENT label
+# (uses the latest matching file in the current directory)
+npx s3-website-perf-compare compare --baseline native-s3 --candidate s3proxy-docker
+
+# or let it pick the two most recent runs from different environments:
+npx s3-website-perf-compare compare
 ```
 
 ## Test data requirements
@@ -149,6 +154,26 @@ BUCKET=my-test-bucket ./test-data/setup-s3-data.sh
 - `unauthorized.html` — returns `403` (bucket-policy `Deny`)
 - a special-character key — 46 B, for URL-encoding tests
 - a missing key (e.g. `/filenotfound`) exercises the `404` path — no object needed
+
+## Public API / stability
+
+What this package supports for consumers (changes here follow semver):
+
+- **JS helpers** — `paths`, `config()`, `scenario()` from the package root
+  (`import { config, scenario } from '@forkzero/s3-website-test-kit'`). Typed via
+  the shipped `index.d.ts`.
+- **Asset files by path** — everything under `configs/` and `scenarios/`,
+  referenced as `node_modules/@forkzero/s3-website-test-kit/…` (or via the
+  helpers). Filenames are part of the contract.
+- **CLI** — the `s3-website-perf-compare` bin and its arguments.
+- **Results contract** — a run using a `processor:`-wired config writes
+  `load-test-results-<TEST_ENVIRONMENT>-<ts>.json`; that name and its `summary`
+  shape are what `s3-website-perf-compare` consumes.
+
+**Internal (no stability guarantee — do not import directly):** everything under
+`utils/` (e.g. `test-runner.js`, `results-parser.js`). The processor is loaded by
+Artillery via the `processor:` path inside a config, and the parser is exposed
+through the CLI — neither is a supported import target.
 
 ## License
 

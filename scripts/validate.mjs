@@ -36,7 +36,9 @@ if (!existsSync(config('conformance.yml'))) {
     : fail('conformance.yml does not enable plugins.expect (assertions would not run)');
 }
 
-// 2. Every .yml under scenarios/ and configs/ is non-empty and has its top key.
+// 2. In one pass over every .yml under scenarios/ and configs/: it's non-empty
+// with its top key, and core scenarios stay target-agnostic (no /health).
+let coreClean = true;
 for (const f of [...walk(paths.scenarios), ...walk(paths.configs)].filter((f) => f.endsWith('.yml'))) {
   const txt = readFileSync(f, 'utf8').trim();
   const key = f.includes('/scenarios/') ? 'scenarios:' : 'config:';
@@ -44,13 +46,9 @@ for (const f of [...walk(paths.scenarios), ...walk(paths.configs)].filter((f) =>
   if (!txt) fail(`empty yaml: ${label}`);
   else if (!txt.includes(key)) fail(`${label} missing '${key}'`);
   else ok(`yaml ok: ${label}`);
-}
 
-// 3. Core scenarios must stay target-agnostic (no /health).
-let coreClean = true;
-for (const f of walk(join(paths.scenarios, 'core')).filter((f) => f.endsWith('.yml'))) {
-  if (readFileSync(f, 'utf8').includes('/health')) {
-    fail(`/health leaked into core: ${f.split('/').slice(-2).join('/')}`);
+  if (f.includes('/scenarios/core/') && txt.includes('/health')) {
+    fail(`/health leaked into core: ${label}`);
     coreClean = false;
   }
 }

@@ -70,7 +70,8 @@ EOF
 
 # large.bin (10 MB) and test1m.tmp (1 MB) — varied binary content.
 gen_random() {
-  local out="$1" bytes="$2" kb=$((${2} / 1024))
+  local out="$1" bytes="$2"
+  local kb=$((bytes / 1024))
   if command -v openssl &> /dev/null; then
     openssl rand -out "$out" "$bytes"
   elif [[ -r /dev/urandom ]]; then
