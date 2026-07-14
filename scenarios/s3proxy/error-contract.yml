@@ -1,0 +1,23 @@
+# s3proxy-only error contract. s3proxy fronts the S3 API, so missing/forbidden
+# keys surface the API's honest XML error body (404/403 + application/xml) —
+# unlike native S3 static-website hosting, which returns a text/html error
+# document. Run this ONLY against an s3proxy target; the portable status-code
+# checks live in scenarios/core/conformance.yml.
+#
+#   artillery run \
+#     --config node_modules/@forkzero/s3-website-test-kit/configs/conformance.yml \
+#     --target http://localhost:8080 \
+#     node_modules/@forkzero/s3-website-test-kit/scenarios/s3proxy/error-contract.yml
+scenarios:
+  - name: "s3proxy XML error contract"
+    flow:
+      - get:
+          url: "/filenotfound"
+          expect:
+            - statusCode: 404
+            - contentType: application/xml
+      - get:
+          url: "/unauthorized.html"
+          expect:
+            - statusCode: 403
+            - contentType: application/xml

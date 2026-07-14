@@ -48,11 +48,14 @@ scenarios:
             - headerEquals:
                 - "content-length"
                 - "0"
+      # Missing key -> 404. Only statusCode is portable here: s3proxy returns an
+      # application/xml S3 error body, but native S3 website hosting returns the
+      # text/html error document. The XML error contract lives in the
+      # target-specific scenarios/s3proxy/error-contract.yml.
       - get:
           url: "/filenotfound"
           expect:
             - statusCode: 404
-            - contentType: application/xml
       # Special-character key, percent-encoded (encodeURIComponent) so URL
       # delimiters (? # space) and S3-significant chars (e.g. + reads as space)
       # don't truncate the path or hit a different key. Exercises URL-encoding

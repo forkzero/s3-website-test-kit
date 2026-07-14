@@ -27,8 +27,10 @@ npm install --save-dev @forkzero/s3-website-test-kit artillery
   website hosting *and* s3proxy (static files, streaming, `206` range, `403`
   on a private object, `404` -> error document, special-character keys, HEAD).
 - **`scenarios/s3proxy/`** - target-specific. `health.yml` hits `/health`,
-  which s3proxy serves but native S3 website hosting does not. Only run it
-  against an s3proxy target.
+  which s3proxy serves but native S3 website hosting does not.
+  `error-contract.yml` asserts s3proxy's XML error bodies (`404`/`403` ->
+  `application/xml`), which native S3 website hosting returns as `text/html`.
+  Only run these against an s3proxy target.
 
 ## Usage
 
