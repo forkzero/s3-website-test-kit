@@ -26,11 +26,14 @@
     "conformance",
     "performance"
   ],
+  "types": "./index.d.ts",
   "exports": {
-    ".": "./index.js",
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
     "./configs/*": "./configs/*",
     "./scenarios/*": "./scenarios/*",
-    "./utils/*": "./utils/*",
     "./package.json": "./package.json"
   },
   "bin": {
@@ -41,6 +44,7 @@
   },
   "files": [
     "index.js",
+    "index.d.ts",
     "configs",
     "scenarios",
     "utils",
