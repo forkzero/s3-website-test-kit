@@ -18,7 +18,7 @@ const walk = (dir) =>
   );
 
 // 1. Path helpers resolve to real files.
-for (const s of ['core/load-test.yml', 'core/basic-load.yml', 's3proxy/health.yml']) {
+for (const s of ['core/load-test.yml', 'core/basic-load.yml', 's3proxy/health.yml', 's3proxy/error-contract.yml']) {
   existsSync(scenario(s)) ? ok(`scenario resolves: ${s}`) : fail(`scenario missing: ${s}`);
 }
 existsSync(config('load-test.yml'))
