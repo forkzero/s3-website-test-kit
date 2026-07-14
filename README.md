@@ -62,6 +62,29 @@ artillery run \
 Set `TEST_ENVIRONMENT` (e.g. `native-s3`, `s3proxy-docker`, `s3proxy-npm`) to
 label the run in the JSON summary the `test-runner.js` processor emits.
 
+## Running the conformance gate
+
+Conformance is the kit's headline feature, so running it is one line. Pair
+`configs/conformance.yml` (enables the `expect` plugin — the load configs don't,
+so `expect:` assertions are otherwise silently inert) with the core conformance
+scenario, and override `--target`:
+
+```bash
+artillery run \
+  --config node_modules/@forkzero/s3-website-test-kit/configs/conformance.yml \
+  --target http://localhost:8080 \
+  node_modules/@forkzero/s3-website-test-kit/scenarios/core/conformance.yml
+```
+
+The scenario is a single sequential flow (one vuser hits every endpoint in
+order), so each assertion runs exactly once regardless of arrival volume, and
+**any failed expectation makes Artillery exit non-zero** — usable directly as a
+CI gate.
+
+> The conformance config intentionally omits a `processor`: pairing the `expect`
+> plugin with this package's ESM processor crashes Artillery. Use a load config
+> (e.g. `configs/docker-container.yml`) when you want the JSON summary.
+
 ## Contents
 
 ```
@@ -85,15 +108,45 @@ npx s3-website-perf-compare compare \
 
 ## Test data requirements
 
-Your S3 test bucket must contain these objects (see `test-data/setup-s3-data.sh`):
+The conformance suite asserts specific keys, sizes, **and content-types**, plus
+a deterministic `403`. The scripts in `test-data/` stand this up for you.
 
-- `index.html` (~338 bytes) - basic HTML
-- `large.bin` (10 MB) - large binary for streaming
-- `test1m.tmp` (1 MB) - medium file
-- `zerobytefile` (0 bytes) - empty file
-- `unauthorized.html` - object that returns 403
-- `404.html` (or your configured error document)
-- a filename with special characters, for URL-encoding tests
+### Bootstrap a target from scratch
+
+`bootstrap-s3-target.sh` creates a working conformance target end-to-end in any
+account — region-aware bucket creation, the dataset with the exact content-types
+the suite asserts, and a bucket-policy `Deny` for the `403` case (which works
+under BucketOwnerEnforced / Block Public Access, unlike a legacy object ACL):
+
+```bash
+BUCKET=my-test-bucket ./test-data/bootstrap-s3-target.sh            # create + load
+BUCKET=my-test-bucket PUBLIC_READ=true ./test-data/bootstrap-s3-target.sh  # also serve native S3 website hosting
+BUCKET=my-test-bucket ./test-data/bootstrap-s3-target.sh teardown   # delete everything
+```
+
+Leave `PUBLIC_READ` unset for an s3proxy target (s3proxy reads with its own
+credentials); set `PUBLIC_READ=true` to also grant anonymous read so the bucket
+can serve **native S3 static-website hosting** (disables Block Public Access).
+
+### Load data into an existing bucket
+
+`setup-s3-data.sh` uploads just the dataset (with content-types and the `403`
+policy) into a bucket you already have. `BUCKET` is **required** — there is no
+default bucket:
+
+```bash
+BUCKET=my-test-bucket ./test-data/setup-s3-data.sh
+```
+
+### The dataset
+
+- `index.html` — `text/html`, 338 B
+- `large.bin` — `application/octet-stream`, 10 MB (streaming / range)
+- `test1m.tmp` — `binary/octet-stream`, 1 MB
+- `zerobytefile` — `binary/octet-stream`, 0 B
+- `unauthorized.html` — returns `403` (bucket-policy `Deny`)
+- a special-character key — 46 B, for URL-encoding tests
+- a missing key (e.g. `/filenotfound`) exercises the `404` path — no object needed
 
 ## License
 

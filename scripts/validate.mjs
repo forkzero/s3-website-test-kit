@@ -25,6 +25,17 @@ existsSync(config('load-test.yml'))
   ? ok('config resolves: load-test.yml')
   : fail('config missing: load-test.yml');
 
+// 1b. A shipped conformance config must exist AND enable the expect plugin —
+// otherwise `expect:` assertions are silently inert (issue #3).
+if (!existsSync(config('conformance.yml'))) {
+  fail('config missing: conformance.yml');
+} else {
+  const conf = readFileSync(config('conformance.yml'), 'utf8');
+  /plugins:[\s\S]*expect:/.test(conf)
+    ? ok('conformance.yml enables the expect plugin')
+    : fail('conformance.yml does not enable plugins.expect (assertions would not run)');
+}
+
 // 2. Every .yml under scenarios/ and configs/ is non-empty and has its top key.
 for (const f of [...walk(paths.scenarios), ...walk(paths.configs)].filter((f) => f.endsWith('.yml'))) {
   const txt = readFileSync(f, 'utf8').trim();

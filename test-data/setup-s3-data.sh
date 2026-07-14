@@ -1,36 +1,53 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-# Configuration
-BUCKET=${BUCKET:-"s3proxy-public"}
+# Upload the conformance dataset into an EXISTING bucket, with the exact
+# content-types the conformance suite asserts, and set up the deterministic 403
+# case via a bucket policy (not a legacy object ACL, which is a no-op under
+# BucketOwnerEnforced / Block Public Access).
+#
+# To create the bucket from scratch as well, use bootstrap-s3-target.sh, which
+# calls this script for the data step.
+#
+#   BUCKET=my-test-bucket ./setup-s3-data.sh
+#
+# Env:
+#   BUCKET       (required) target bucket — no default; fails if unset.
+#   AWS_REGION   (default: us-east-1)
+#   PUBLIC_READ  (default: false) also grant anonymous s3:GetObject on the
+#                dataset so the bucket can serve native S3 static-website
+#                hosting. Requires Block Public Access to be disabled on the
+#                bucket (bootstrap-s3-target.sh does this for you).
+
+if [[ -z "${BUCKET:-}" ]]; then
+  echo "Error: BUCKET is required." >&2
+  echo "Usage: BUCKET=my-test-bucket [AWS_REGION=us-east-1] [PUBLIC_READ=true] $0" >&2
+  exit 2
+fi
 REGION=${AWS_REGION:-"us-east-1"}
+PUBLIC_READ=${PUBLIC_READ:-"false"}
 
-echo "Setting up test data for s3proxy load testing..."
+echo "Uploading conformance dataset..."
 echo "Bucket: $BUCKET"
 echo "Region: $REGION"
 
-# Check if AWS CLI is available
 if ! command -v aws &> /dev/null; then
-    echo "Error: AWS CLI is not installed or not in PATH"
+    echo "Error: AWS CLI is not installed or not in PATH" >&2
     exit 1
 fi
 
-# Check if bucket exists and is accessible
-echo "Checking bucket access..."
-if ! aws s3 ls "s3://$BUCKET" --region "$REGION" > /dev/null 2>&1; then
-    echo "Error: Cannot access bucket s3://$BUCKET"
-    echo "Please ensure:"
-    echo "1. The bucket exists"
-    echo "2. You have proper AWS credentials configured"
-    echo "3. You have read/write permissions to the bucket"
+# Verify the bucket exists / is accessible before doing work.
+if ! aws s3api head-bucket --bucket "$BUCKET" --region "$REGION" > /dev/null 2>&1; then
+    echo "Error: cannot access bucket s3://$BUCKET" >&2
+    echo "Create it first (see bootstrap-s3-target.sh) or check your credentials/permissions." >&2
     exit 1
 fi
 
-# Create temporary directory for test files
 TEMP_DIR=$(mktemp -d)
-echo "Creating test files in: $TEMP_DIR"
+trap 'rm -rf "$TEMP_DIR"' EXIT
+echo "Staging test files in: $TEMP_DIR"
 
-# Create index.html (338 bytes)
+# index.html (338 bytes)
 cat > "$TEMP_DIR/index.html" << 'EOF'
 <!doctype html>
 
@@ -51,45 +68,30 @@ The public repo is <a href="https://github.com/gmoon/s3proxy">here</a>.
 
 EOF
 
-# Create large.bin (10MB) with varied binary content
-echo "Creating large.bin (10MB) with random binary data..."
-if command -v openssl &> /dev/null; then
-    # Use OpenSSL for cross-platform random data generation
-    openssl rand -out "$TEMP_DIR/large.bin" 10485760
-elif [[ -r /dev/urandom ]]; then
-    # Use /dev/urandom on Unix systems
-    dd if=/dev/urandom of="$TEMP_DIR/large.bin" bs=1024 count=10240 2>/dev/null
-else
-    # Fallback: create a pattern-based file with varied content
-    echo "Warning: No random source available, creating pattern-based binary file"
+# large.bin (10 MB) and test1m.tmp (1 MB) — varied binary content.
+gen_random() {
+  local out="$1" bytes="$2" kb=$((${2} / 1024))
+  if command -v openssl &> /dev/null; then
+    openssl rand -out "$out" "$bytes"
+  elif [[ -r /dev/urandom ]]; then
+    dd if=/dev/urandom of="$out" bs=1024 count="$kb" 2>/dev/null
+  else
+    echo "Warning: no random source; generating pattern-based file for $out" >&2
     python3 -c "
-import os
-with open('$TEMP_DIR/large.bin', 'wb') as f:
-    for i in range(10485760):
-        f.write(bytes([i % 256]))
+with open('$out','wb') as f:
+    f.write(bytes((i % 256) for i in range($bytes)))
 "
-fi
+  fi
+}
+echo "Generating large.bin (10MB)..."
+gen_random "$TEMP_DIR/large.bin" 10485760
+echo "Generating test1m.tmp (1MB)..."
+gen_random "$TEMP_DIR/test1m.tmp" 1048576
 
-# Create test1m.tmp (1MB) with varied binary content
-echo "Creating test1m.tmp (1MB) with random binary data..."
-if command -v openssl &> /dev/null; then
-    openssl rand -out "$TEMP_DIR/test1m.tmp" 1048576
-elif [[ -r /dev/urandom ]]; then
-    dd if=/dev/urandom of="$TEMP_DIR/test1m.tmp" bs=1024 count=1024 2>/dev/null
-else
-    # Fallback: create a different pattern for variety
-    python3 -c "
-import os
-with open('$TEMP_DIR/test1m.tmp', 'wb') as f:
-    for i in range(1048576):
-        f.write(bytes([(i * 7) % 256]))
-"
-fi
+# zerobytefile (0 bytes)
+: > "$TEMP_DIR/zerobytefile"
 
-# Create zero byte file
-touch "$TEMP_DIR/zerobytefile"
-
-# Create unauthorized.html (will be made inaccessible)
+# unauthorized.html — served 403 via the bucket policy below.
 cat > "$TEMP_DIR/unauthorized.html" << 'EOF'
 <!DOCTYPE html>
 <html>
@@ -102,75 +104,86 @@ cat > "$TEMP_DIR/unauthorized.html" << 'EOF'
 </html>
 EOF
 
-# Create special characters file
+# Special-characters key (46 bytes). Exact literal key that the encoded
+# conformance/range URLs decode to.
 SPECIAL_CHARS_FILE="specialCharacters!-_.*'()&\$@=;:+  ,?\\{^}%\`]\">[~<#|."
 echo "Test file with special characters in filename" > "$TEMP_DIR/$SPECIAL_CHARS_FILE"
 
-# Calculate and display file hashes for validation
 echo ""
-echo "File integrity information:"
-if command -v md5sum &> /dev/null; then
-    echo "large.bin MD5: $(md5sum "$TEMP_DIR/large.bin" | cut -d' ' -f1)"
-    echo "test1m.tmp MD5: $(md5sum "$TEMP_DIR/test1m.tmp" | cut -d' ' -f1)"
-elif command -v md5 &> /dev/null; then
-    echo "large.bin MD5: $(md5 -q "$TEMP_DIR/large.bin")"
-    echo "test1m.tmp MD5: $(md5 -q "$TEMP_DIR/test1m.tmp")"
+echo "Uploading files with conformance content-types..."
+
+# key : local-file : content-type  (content-types must match conformance.yml)
+upload() {
+  local key="$1" file="$2" ctype="$3"
+  aws s3api put-object \
+    --bucket "$BUCKET" --region "$REGION" \
+    --key "$key" --body "$file" --content-type "$ctype" \
+    --no-cli-pager > /dev/null
+  echo "  ✓ $key ($ctype)"
+}
+upload "index.html"          "$TEMP_DIR/index.html"          "text/html"
+upload "large.bin"           "$TEMP_DIR/large.bin"           "application/octet-stream"
+upload "test1m.tmp"          "$TEMP_DIR/test1m.tmp"          "binary/octet-stream"
+upload "zerobytefile"        "$TEMP_DIR/zerobytefile"        "binary/octet-stream"
+upload "unauthorized.html"   "$TEMP_DIR/unauthorized.html"   "text/html"
+upload "$SPECIAL_CHARS_FILE" "$TEMP_DIR/$SPECIAL_CHARS_FILE" "binary/octet-stream"
+
+# Deterministic 403: an explicit Deny on s3:GetObject for unauthorized.html.
+# Explicit Deny beats every Allow (including the bucket owner's), so s3proxy —
+# which reads with owner credentials — gets AccessDenied -> 403. Works under
+# BucketOwnerEnforced / Block Public Access, where the old object ACL was a no-op.
+# Optionally also grant anonymous read on everything else for native S3 website
+# hosting. NOTE: this REPLACES the bucket policy — intended for a dedicated test
+# bucket, not a shared one.
+echo ""
+echo "Applying bucket policy (403 on unauthorized.html)..."
+DENY_STMT=$(cat <<EOF
+    {
+      "Sid": "DenyUnauthorizedGetObject",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::$BUCKET/unauthorized.html"
+    }
+EOF
+)
+if [[ "$PUBLIC_READ" == "true" ]]; then
+  ALLOW_STMT=$(cat <<EOF
+    {
+      "Sid": "PublicReadGetObject",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::$BUCKET/*"
+    },
+EOF
+)
+  echo "  (PUBLIC_READ=true: also granting anonymous read for native S3 website hosting)"
+else
+  ALLOW_STMT=""
+fi
+POLICY=$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+$ALLOW_STMT$DENY_STMT
+  ]
+}
+EOF
+)
+if aws s3api put-bucket-policy --bucket "$BUCKET" --region "$REGION" --policy "$POLICY" 2>/dev/null; then
+  echo "  ✓ bucket policy applied"
+else
+  echo "  ⚠️  Could not apply bucket policy." >&2
+  if [[ "$PUBLIC_READ" == "true" ]]; then
+    echo "     A public-read Allow needs Block Public Access disabled (see bootstrap-s3-target.sh)." >&2
+  fi
+  echo "     unauthorized.html may not return 403." >&2
 fi
 
-# Verify files contain non-zero bytes
-echo ""
-echo "Verifying binary file integrity..."
-if command -v hexdump &> /dev/null; then
-    echo "large.bin first 32 bytes:"
-    hexdump -C "$TEMP_DIR/large.bin" | head -2
-    echo "test1m.tmp first 32 bytes:"
-    hexdump -C "$TEMP_DIR/test1m.tmp" | head -2
-fi
-
-echo ""
-echo "Uploading files to S3..."
-
-# Upload files
-aws s3 cp "$TEMP_DIR/index.html" "s3://$BUCKET/index.html" --region "$REGION" --no-progress
-echo "✓ Uploaded index.html"
-
-aws s3 cp "$TEMP_DIR/large.bin" "s3://$BUCKET/large.bin" --region "$REGION" --no-progress
-echo "✓ Uploaded large.bin"
-
-aws s3 cp "$TEMP_DIR/test1m.tmp" "s3://$BUCKET/test1m.tmp" --region "$REGION" --no-progress
-echo "✓ Uploaded test1m.tmp"
-
-aws s3 cp "$TEMP_DIR/zerobytefile" "s3://$BUCKET/zerobytefile" --region "$REGION" --no-progress
-echo "✓ Uploaded zerobytefile"
-
-aws s3 cp "$TEMP_DIR/unauthorized.html" "s3://$BUCKET/unauthorized.html" --region "$REGION" --no-progress
-echo "✓ Uploaded unauthorized.html"
-
-aws s3 cp "$TEMP_DIR/$SPECIAL_CHARS_FILE" "s3://$BUCKET/$SPECIAL_CHARS_FILE" --region "$REGION" --no-progress
-echo "✓ Uploaded special characters file"
-
-# Set restricted permissions on unauthorized.html (this may not work on all S3 configurations)
-echo "Setting restricted permissions on unauthorized.html..."
-aws s3api put-object-acl --bucket "$BUCKET" --key "unauthorized.html" --acl private --region "$REGION" 2>/dev/null || echo "⚠️  Could not set private ACL - file may not return 403"
-
-# Verify uploads by checking file sizes
 echo ""
 echo "Verifying uploads..."
 aws s3 ls "s3://$BUCKET/" --region "$REGION" --human-readable --summarize
 
-# Clean up temporary files
-rm -rf "$TEMP_DIR"
-
 echo ""
-echo "✅ Test data setup complete!"
-echo ""
-echo "Files created in s3://$BUCKET/:"
-echo "  - index.html (338 bytes) - HTML test file"
-echo "  - large.bin (10MB) - Large binary file with random data"
-echo "  - test1m.tmp (1MB) - Medium binary file with random data"
-echo "  - zerobytefile (0 bytes) - Empty file test"
-echo "  - unauthorized.html - Access control test (may return 403)"
-echo "  - $SPECIAL_CHARS_FILE - Special characters filename test"
-echo ""
-echo "Binary files now contain varied random data for proper integrity testing."
-echo "You can now run load tests and validation tests against your s3proxy instance."
+echo "✅ Dataset ready in s3://$BUCKET/"

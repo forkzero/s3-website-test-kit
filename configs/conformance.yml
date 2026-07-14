@@ -1,0 +1,23 @@
+# Conformance gate. Unlike the load configs, this one enables the `expect`
+# plugin so the assertions in scenarios/core/conformance.yml actually run, and
+# uses a single deterministic arrival so every assertion fires exactly once.
+# Any failed expectation makes Artillery exit non-zero — usable as a CI gate.
+#
+# Override the target on the CLI to point at whatever you're checking:
+#
+#   artillery run \
+#     --config node_modules/@forkzero/s3-website-test-kit/configs/conformance.yml \
+#     --target http://localhost:8080 \
+#     node_modules/@forkzero/s3-website-test-kit/scenarios/core/conformance.yml
+config:
+  target: 'http://localhost:8080'
+  plugins:
+    expect: {}
+  phases:
+    - duration: 1
+      arrivalCount: 1
+      name: "conformance"
+  # No `processor:` here on purpose. The gate only needs the expect plugin, and
+  # pairing the expect plugin with this package's ESM processor crashes Artillery
+  # ("object is not extensible" — the plugin can't attach to an ESM module
+  # namespace). Use a load config (e.g. docker-container.yml) for the JSON summary.

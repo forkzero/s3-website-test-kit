@@ -39,7 +39,10 @@ scenarios:
     weight: 1
     flow:
       - get:
-          url: "/specialCharacters!-_.*'()&$@=;:+  ,?\\{^}%`]\">[~<#|."
+          # Percent-encoded (encodeURIComponent); raw URL delimiters (? # space)
+          # and S3-significant chars (+ reads as space) would hit a wrong key -> 404.
+          # Decodes to: specialCharacters!-_.*'()&$@=;:+  ,?\{^}%`]">[~<#|.
+          url: "/specialCharacters!-_.*'()%26%24%40%3D%3B%3A%2B%20%20%2C%3F%5C%7B%5E%7D%25%60%5D%22%3E%5B~%3C%23%7C."
           expect:
             - statusCode: 200
 

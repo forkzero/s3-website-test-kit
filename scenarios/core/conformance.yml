@@ -1,5 +1,17 @@
+# Deterministic conformance gate. A single vuser walks every endpoint in order,
+# so each assertion runs exactly once regardless of arrival volume (a gate must
+# not depend on how many vusers happen to spawn). Pair with the conformance
+# config, which enables the expect plugin so the assertions actually run:
+#
+#   artillery run \
+#     --config node_modules/@forkzero/s3-website-test-kit/configs/conformance.yml \
+#     --target http://localhost:8080 \
+#     node_modules/@forkzero/s3-website-test-kit/scenarios/core/conformance.yml
+#
+# Any failed expectation makes Artillery exit non-zero.
 scenarios:
-  - flow:
+  - name: "S3 static-website conformance"
+    flow:
       - get:
           url: "/index.html"
           expect:
@@ -8,7 +20,6 @@ scenarios:
             - headerEquals:
                 - "content-length"
                 - "338"
-  - flow:
       - get:
           url: "/test1m.tmp"
           expect:
@@ -17,7 +28,6 @@ scenarios:
             - headerEquals:
                 - "content-length"
                 - "1048576"
-  - flow:
       - head:
           url: "/large.bin"
           expect:
@@ -26,12 +36,10 @@ scenarios:
             - headerEquals:
                 - "content-length"
                 - "10485760"
-  - flow:
       - get:
           url: "/unauthorized.html"
           expect:
             - statusCode: 403
-  - flow:
       - get:
           url: "/zerobytefile"
           expect:
@@ -40,9 +48,20 @@ scenarios:
             - headerEquals:
                 - "content-length"
                 - "0"
-  - flow:
       - get:
           url: "/filenotfound"
           expect:
             - statusCode: 404
             - contentType: application/xml
+      # Special-character key, percent-encoded (encodeURIComponent) so URL
+      # delimiters (? # space) and S3-significant chars (e.g. + reads as space)
+      # don't truncate the path or hit a different key. Exercises URL-encoding
+      # conformance — the README lists this as a core case.
+      # Decodes to: specialCharacters!-_.*'()&$@=;:+  ,?\{^}%`]">[~<#|.
+      - get:
+          url: "/specialCharacters!-_.*'()%26%24%40%3D%3B%3A%2B%20%20%2C%3F%5C%7B%5E%7D%25%60%5D%22%3E%5B~%3C%23%7C."
+          expect:
+            - statusCode: 200
+            - headerEquals:
+                - "content-length"
+                - "46"

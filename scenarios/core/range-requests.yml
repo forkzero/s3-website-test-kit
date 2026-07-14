@@ -63,8 +63,12 @@ scenarios:
   - name: "Range requests on special character files"
     weight: 2
     flow:
+      # Percent-encoded (encodeURIComponent) key: the raw filename contains URL
+      # delimiters (? # space) and S3-significant chars (e.g. + reads as space)
+      # that would otherwise truncate the path or hit a different key (false 404).
+      # Decodes to: specialCharacters!-_.*'()&$@=;:+  ,?\{^}%`]">[~<#|.
       - get:
-          url: "/specialCharacters!-_.*'()&$@=;:+  ,?\\{^}%`]\">[~<#|."
+          url: "/specialCharacters!-_.*'()%26%24%40%3D%3B%3A%2B%20%20%2C%3F%5C%7B%5E%7D%25%60%5D%22%3E%5B~%3C%23%7C."
           headers:
             'range': "bytes=0-49"
           expect:
