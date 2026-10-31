@@ -61,8 +61,8 @@ artillery run \
   node_modules/@forkzero/s3-website-test-kit/scenarios/core/load-test.yml
 ```
 
-Set `TEST_ENVIRONMENT` (e.g. `native-s3`, `s3proxy-docker`, `s3proxy-npm`) to
-label the run in the JSON summary the `test-runner.js` processor emits.
+Add `-o report.json` to capture Artillery's own aggregated metrics for the run
+(used by `s3-website-perf-compare` below).
 
 ## Running the conformance gate
 
@@ -83,31 +83,28 @@ order), so each assertion runs exactly once regardless of arrival volume, and
 **any failed expectation makes Artillery exit non-zero** — usable directly as a
 CI gate.
 
-> The conformance config intentionally omits a `processor`: pairing the `expect`
-> plugin with this package's ESM processor crashes Artillery. Use a load config
-> (e.g. `configs/docker-container.yml`) when you want the JSON summary.
-
 ## Contents
 
 ```
-configs/           Artillery config files (phases, processor wiring)
+configs/           Artillery config files (phases, plugins)
 scenarios/core/    Portable S3-website scenarios (native S3 and s3proxy)
-scenarios/s3proxy/ s3proxy-only scenarios (health)
-utils/             Shared processor (test-runner.js) and results comparator
-test-data/         Script to create the required objects in your S3 test bucket
+scenarios/s3proxy/ s3proxy-only scenarios (health, error-contract)
+utils/             Results comparator (results-parser.js)
+test-data/         Scripts to create/bootstrap the objects in your S3 test bucket
 ```
 
 ### Comparing two runs
 
-A run using a config with the `test-runner.js` processor writes a JSON summary
-named `load-test-results-<TEST_ENVIRONMENT>-<ts>.json`. `s3-website-perf-compare`
-diffs two of them — a **baseline** and a **candidate** — labelling each by its
-`TEST_ENVIRONMENT`. For example, native S3 vs s3proxy:
+Run each load test with Artillery's `-o` flag to capture an aggregated JSON
+report, then diff two of them — a **baseline** and a **candidate**:
 
 ```bash
-# each argument is a results file or a bare TEST_ENVIRONMENT label
-# (uses the latest matching file in the current directory)
-npx s3-website-perf-compare compare --baseline native-s3 --candidate s3proxy-docker
+# capture a report per target
+artillery run --config configs/load-test.yml --target <native-s3-url>  -o native.json  scenarios/core/load-test.yml
+artillery run --config configs/load-test.yml --target <s3proxy-url>    -o s3proxy.json scenarios/core/load-test.yml
+
+# diff them (labels default to the filename; override with --baseline-label/--candidate-label)
+npx s3-website-perf-compare compare --baseline native.json --candidate s3proxy.json
 
 # or let it pick the two most recent runs from different environments:
 npx s3-website-perf-compare compare
@@ -165,15 +162,12 @@ What this package supports for consumers (changes here follow semver):
 - **Asset files by path** — everything under `configs/` and `scenarios/`,
   referenced as `node_modules/@forkzero/s3-website-test-kit/…` (or via the
   helpers). Filenames are part of the contract.
-- **CLI** — the `s3-website-perf-compare` bin and its arguments.
-- **Results contract** — a run using a `processor:`-wired config writes
-  `load-test-results-<TEST_ENVIRONMENT>-<ts>.json`; that name and its `summary`
-  shape are what `s3-website-perf-compare` consumes.
+- **CLI** — the `s3-website-perf-compare` bin and its arguments. It consumes
+  Artillery's native JSON report (`artillery run ... -o report.json`).
 
 **Internal (no stability guarantee — do not import directly):** everything under
-`utils/` (e.g. `test-runner.js`, `results-parser.js`). The processor is loaded by
-Artillery via the `processor:` path inside a config, and the parser is exposed
-through the CLI — neither is a supported import target.
+`utils/` (e.g. `results-parser.js`). The parser is exposed through the
+`s3-website-perf-compare` CLI — it is not a supported import target.
 
 ## License
 
