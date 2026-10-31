@@ -12,7 +12,3 @@ config:
     - duration: 300
       arrivalRate: 50
       name: "sustained load"
-  processor: "../utils/test-runner.js"
-  variables:
-    testEnvironment: "performance-comparison"
-    testRunId: "{{ $randomString() }}"

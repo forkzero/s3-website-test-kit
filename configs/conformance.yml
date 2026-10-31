@@ -17,7 +17,6 @@ config:
     - duration: 1
       arrivalCount: 1
       name: "conformance"
-  # No `processor:` here on purpose. The gate only needs the expect plugin, and
-  # pairing the expect plugin with this package's ESM processor crashes Artillery
-  # ("object is not extensible" — the plugin can't attach to an ESM module
-  # namespace). Use a load config (e.g. docker-container.yml) for the JSON summary.
+  # The gate only needs the expect plugin to run its assertions. For load
+  # metrics, run a load config with `artillery run ... -o report.json` and diff
+  # two reports with `s3-website-perf-compare`.
