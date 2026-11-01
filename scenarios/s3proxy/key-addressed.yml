@@ -1,0 +1,29 @@
+# s3proxy key-addressed serving (proxy.fetchWebKey). fetchWebKey lets the CALLER
+# name the S3 key; the request URL plays no role in key selection. This exercises
+# an example server route built on it — the s3proxy examples expose `/download/:id`
+# with aliases `home` -> index.html and `special` -> an object whose key is a pile
+# of reserved characters, proving the key is served VERBATIM (the case the
+# URL-addressed fetchWeb path cannot carry). Run ONLY against an s3proxy example
+# server exposing that route; the portable status-code checks live in
+# scenarios/core/conformance.yml.
+#
+#   artillery run \
+#     --config node_modules/@forkzero/s3-website-test-kit/configs/conformance.yml \
+#     --target http://localhost:8080 \
+#     node_modules/@forkzero/s3-website-test-kit/scenarios/s3proxy/key-addressed.yml
+scenarios:
+  - name: "s3proxy key-addressed serving (fetchWebKey)"
+    flow:
+      - get:
+          url: "/download/home"
+          expect:
+            - statusCode: 200
+            - contentType: text/html
+      - get:
+          url: "/download/special"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/download/bogus"
+          expect:
+            - statusCode: 404

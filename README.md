@@ -30,6 +30,9 @@ npm install --save-dev @forkzero/s3-website-test-kit artillery
   which s3proxy serves but native S3 website hosting does not.
   `error-contract.yml` asserts s3proxy's XML error bodies (`404`/`403` ->
   `application/xml`), which native S3 website hosting returns as `text/html`.
+  `key-addressed.yml` exercises `proxy.fetchWebKey()` via a `/download/:id`
+  route (caller names the key; the URL doesn't), including a reserved-character
+  key served verbatim — requires a target exposing that route.
   Only run these against an s3proxy target.
 
 ## Usage
